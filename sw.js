@@ -2,7 +2,7 @@
    Hace la app instalable y disponible sin conexión.
    Sube el número de versión cuando cambies index.html para forzar actualización. */
 
-const VERSION = 'v5-7';
+const VERSION = 'v5-8';
 const SHELL_CACHE = 'librero-shell-' + VERSION;
 const COVER_CACHE = 'librero-covers-' + VERSION;
 const COVER_MAX = 300; // máximo de portadas guardadas

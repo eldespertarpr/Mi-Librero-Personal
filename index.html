@@ -101,6 +101,8 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
     <label>ISBN<input id="bookISBN" inputmode="numeric" placeholder="opcional — mejora la portada"></label>
     <button type="button" id="scanIsbn" class="secondary" style="width:100%;margin:6px 0 10px">📷 Escanear código de barras</button>
     <label>URL de portada<input id="bookCover"></label>
+    <button type="button" id="coverPhotoBtn" class="secondary" style="width:100%;margin:6px 0 10px">📷 Tomar / subir foto de portada</button>
+    <input id="coverPhoto" type="file" accept="image/*" capture="environment" hidden>
     <label>Notas<textarea id="bookNotes" rows="3"></textarea></label>
     <div class="actions"><button id="bookSave" class="good">Guardar</button><button id="bookCancel" class="secondary">Cancelar</button></div>
   </div>
@@ -198,6 +200,8 @@ function bind(){
  $('#coverSearchAgain').onclick=()=>{ if(coverTarget) openCoverSearch(coverTarget.id); };
  $('#scanIsbn').onclick=openScanner;
  $('#scanClose').onclick=closeScanner;
+ $('#coverPhotoBtn').onclick=()=>$('#coverPhoto').click();
+ $('#coverPhoto').addEventListener('change',onCoverPhoto);
 }
 function buildShelfTabs(){
  const shelves=['Todas',...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a==='Todas'?-1:b==='Todas'?1:a.localeCompare(b,undefined,{numeric:true}));
@@ -228,13 +232,14 @@ function render(){
  $$('[data-edit]').forEach(btn=>btn.onclick=()=>openBook(btn.dataset.edit));
  $$('[data-history]').forEach(btn=>btn.onclick=()=>openHistory(btn.dataset.history));
  $$('[data-cover]').forEach(btn=>btn.onclick=()=>openCoverSearch(btn.dataset.cover));
+ $$('[data-delete]').forEach(btn=>btn.onclick=()=>deleteBook(btn.dataset.delete));
 }
 function card(b){
  const cover=b.portada?`<img src="${esc(b.portada)}" onerror="this.remove();this.parentElement.textContent='Sin portada'">`:'Sin portada';
  const status=b.estado==='Prestado'?`<span class="badge loan">Prestado a ${esc(b.prestado_a||'')}</span>`:`<span class="badge ok">Disponible</span>`;
  const hist=(b.historial_prestamos||[]).length;
  const extra=b.estado==='Prestado'?`<div class="statusline">Prestado: ${esc(b.fecha_prestamo||'sin fecha')}${b.telefono?' · Tel: '+esc(b.telefono):''}</div>${dueText(b)}${b.nota_prestamo?`<div class="statusline">Nota: ${esc(b.nota_prestamo)}</div>`:''}`:'';
- return `<article class="card"><div class="cover">${cover}</div><div class="info"><div class="title">${esc(b.titulo)}${b.copia>1?` <span class="small">(copia ${b.copia})</span>`:''}</div><div class="meta">${esc(b.autor||'Autor no registrado')}</div><div class="meta"><b>${esc(b.tablilla)}</b> — ${esc(b.categoria)}</div>${status}${extra}<div class="actions"><button data-edit="${b.id}" class="secondary">Editar</button>${b.estado==='Prestado'?`<button data-return="${b.id}" class="good">Devuelto</button>`:`<button data-loan="${b.id}">Prestar</button>`}<button data-history="${b.id}" class="secondary btn-mini">Historial${hist?` (${hist})`:''}</button><button data-cover="${b.id}" class="secondary btn-mini">${b.portada?'Cambiar portada':'Buscar portada'}</button></div></div></article>`;
+ return `<article class="card"><div class="cover">${cover}</div><div class="info"><div class="title">${esc(b.titulo)}${b.copia>1?` <span class="small">(copia ${b.copia})</span>`:''}</div><div class="meta">${esc(b.autor||'Autor no registrado')}</div><div class="meta"><b>${esc(b.tablilla)}</b> — ${esc(b.categoria)}</div>${status}${extra}<div class="actions"><button data-edit="${b.id}" class="secondary">Editar</button>${b.estado==='Prestado'?`<button data-return="${b.id}" class="good">Devuelto</button>`:`<button data-loan="${b.id}">Prestar</button>`}<button data-history="${b.id}" class="secondary btn-mini">Historial${hist?` (${hist})`:''}</button><button data-cover="${b.id}" class="secondary btn-mini">${b.portada?'Cambiar portada':'Buscar portada'}</button><button data-delete="${b.id}" class="secondary btn-mini" style="border-color:#7f1d1d;color:#fca5a5">Eliminar</button></div></div></article>`;
 }
 function openLoan(id){ loanTarget=books.find(b=>b.id===id); $('#loanTitle').textContent=loanTarget.titulo; $('#loanPerson').value=''; $('#loanPhone').value=''; $('#loanDate').value=today(); $('#loanDue').value=''; $('#loanNote').value=''; $('#loanModal').classList.remove('hide'); }
 function closeLoan(){ $('#loanModal').classList.add('hide'); loanTarget=null; }
@@ -314,6 +319,28 @@ async function coverFromIsbn(isbn){
   }
   if(url){ $('#bookCover').value=url; alert('ISBN '+isbn+' escaneado y portada encontrada ✓\nRevisa y toca Guardar.'); }
   else{ alert('ISBN '+isbn+' escaneado ✓\nNo hallé portada automática; usa el buscador de portadas o pega una URL. Toca Guardar.'); }
+}
+function deleteBook(id){
+  const b=books.find(x=>x.id===id); if(!b)return;
+  if(!confirm('¿Eliminar "'+b.titulo+'"? Esta acción no se puede deshacer.')) return;
+  books=books.filter(x=>x.id!==id); save(); buildShelfTabs(); render();
+}
+function onCoverPhoto(e){
+  const file=e.target.files&&e.target.files[0]; if(!file){return;}
+  const reader=new FileReader();
+  reader.onload=()=>{ const img=new Image();
+    img.onload=()=>{
+      const max=360; let w=img.naturalWidth,h=img.naturalHeight;
+      if(w>h&&w>max){h=Math.round(h*max/w);w=max;} else if(h>=w&&h>max){w=Math.round(w*max/h);h=max;}
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      try{ $('#bookCover').value=c.toDataURL('image/jpeg',0.62); alert('Foto de portada lista ✓ Toca Guardar para aplicarla.'); }
+      catch(err){ alert('No pude procesar la imagen.'); }
+    };
+    img.onerror=()=>alert('No pude leer esa imagen.'); img.src=reader.result;
+  };
+  reader.onerror=()=>alert('No pude leer el archivo.');
+  reader.readAsDataURL(file); e.target.value='';
 }
 async function findVisibleCovers(){
  const list=filtered().filter(b=>!b.portada).slice(0,10); if(!list.length){$('#coverStatus').textContent='No hay libros visibles sin portada.';return;}
