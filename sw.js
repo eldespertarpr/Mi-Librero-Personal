@@ -2,7 +2,7 @@
    Hace la app instalable y disponible sin conexión.
    Sube el número de versión cuando cambies index.html para forzar actualización. */
 
-const VERSION = 'v5-2';
+const VERSION = 'v5-3';
 const SHELL_CACHE = 'librero-shell-' + VERSION;
 const COVER_CACHE = 'librero-covers-' + VERSION;
 const COVER_MAX = 300; // máximo de portadas guardadas
@@ -11,12 +11,12 @@ const SHELL_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-192-maskable.png',
-  './icons/icon-512-maskable.png',
-  './icons/icon-180.png',
-  './icons/favicon-32.png'
+  './icon-192.png',
+  './icon-512.png',
+  './icon-192-maskable.png',
+  './icon-512-maskable.png',
+  './icon-180.png',
+  './favicon-32.png'
 ];
 
 // Dominios desde donde llegan las portadas (se cachean al verlas).
