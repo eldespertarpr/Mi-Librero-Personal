@@ -180,6 +180,9 @@ function bind(){
  $('#historyClose').onclick=()=>$('#historyModal').classList.add('hide');
  $('#returnCancel').onclick=()=>{returnTarget=null; $('#returnModal').classList.add('hide');};
  $('#returnConfirm').onclick=confirmReturn;
+ $('#findVisibleCovers').onclick=findVisibleCovers;
+ $('#coverClose').onclick=closeCoverModal;
+ $('#coverSearchAgain').onclick=()=>{ if(coverTarget) openCoverSearch(coverTarget.id); };
 }
 function buildShelfTabs(){
  const shelves=['Todas',...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a==='Todas'?-1:b==='Todas'?1:a.localeCompare(b,undefined,{numeric:true}));
