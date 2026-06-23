@@ -33,6 +33,7 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
 @media(max-width:720px){.cover-results{grid-template-columns:1fr 1fr}.cover-choice img{height:150px}.cover-tools{grid-template-columns:1fr}}
 @media(max-width:390px){.cover-results{grid-template-columns:1fr}.cover-choice img{height:190px}}
 </style>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 <header class="no-print">
@@ -97,9 +98,21 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
     <label>Título<input id="bookTitle"></label>
     <label>Autor<input id="bookAuthor"></label>
     <div class="row"><label>Tablilla<input id="bookShelf"></label><label>Categoría<input id="bookCategory"></label></div>
-    <div class="row"><label>ISBN<input id="bookISBN" inputmode="numeric" placeholder="opcional — mejora la portada"></label><label>URL de portada<input id="bookCover"></label></div>
+    <label>ISBN<input id="bookISBN" inputmode="numeric" placeholder="opcional — mejora la portada"></label>
+    <button type="button" id="scanIsbn" class="secondary" style="width:100%;margin:6px 0 10px">📷 Escanear código de barras</button>
+    <label>URL de portada<input id="bookCover"></label>
     <label>Notas<textarea id="bookNotes" rows="3"></textarea></label>
     <div class="actions"><button id="bookSave" class="good">Guardar</button><button id="bookCancel" class="secondary">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="modal hide" id="scanModal" style="z-index:20">
+  <div class="modalbox">
+    <h2>Escanear ISBN</h2>
+    <p class="small">Apunta la cámara al código de barras (las rayas) en la contraportada del libro. Necesitas dar permiso de cámara e internet.</p>
+    <div id="scanView" style="width:100%;border-radius:12px;overflow:hidden;background:#000;min-height:240px"></div>
+    <div id="scanStatus" class="cover-status">Iniciando cámara…</div>
+    <div class="cover-tools"><button id="scanClose" class="secondary">Cerrar</button></div>
   </div>
 </div>
 
@@ -183,6 +196,8 @@ function bind(){
  $('#findVisibleCovers').onclick=findVisibleCovers;
  $('#coverClose').onclick=closeCoverModal;
  $('#coverSearchAgain').onclick=()=>{ if(coverTarget) openCoverSearch(coverTarget.id); };
+ $('#scanIsbn').onclick=openScanner;
+ $('#scanClose').onclick=closeScanner;
 }
 function buildShelfTabs(){
  const shelves=['Todas',...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a==='Todas'?-1:b==='Todas'?1:a.localeCompare(b,undefined,{numeric:true}));
@@ -228,7 +243,7 @@ function openReturn(id){ returnTarget=books.find(x=>x.id===id); if(!returnTarget
 function confirmReturn(){ const b=returnTarget; if(!b)return; const record={persona:b.prestado_a||'',telefono:b.telefono||'',fecha_prestamo:b.fecha_prestamo||'',fecha_esperada:b.fecha_esperada||'',fecha_devolucion:today(),nota_prestamo:b.nota_prestamo||'',nota_devolucion:$('#returnNote').value.trim()}; b.historial_prestamos = Array.isArray(b.historial_prestamos)?b.historial_prestamos:[]; b.historial_prestamos.unshift(record); b.estado='Disponible'; b.fecha_devolucion=today(); b.prestado_a=''; b.telefono=''; b.fecha_prestamo=''; b.fecha_esperada=''; b.nota_prestamo=''; returnTarget=null; $('#returnModal').classList.add('hide'); save(); render(); }
 function openHistory(id){ const b=books.find(x=>x.id===id); if(!b)return; $('#historyTitle').textContent=b.titulo; const hist=b.historial_prestamos||[]; $('#historyList').innerHTML = hist.length? hist.map((h,i)=>`<div class="loan-row"><div><b>${i+1}. ${esc(h.persona||'Sin nombre')}</b><span>Prestado: ${esc(h.fecha_prestamo||'')} · Esperado: ${esc(h.fecha_esperada||'')} · Devuelto: ${esc(h.fecha_devolucion||'')}</span>${h.telefono?`<span>Tel: ${esc(h.telefono)}</span>`:''}${h.nota_prestamo?`<span>Nota préstamo: ${esc(h.nota_prestamo)}</span>`:''}${h.nota_devolucion?`<span>Nota devolución: ${esc(h.nota_devolucion)}</span>`:''}</div></div>`).join(''):'Este libro no tiene historial todavía.'; $('#historyModal').classList.remove('hide'); }
 function openBook(id){ editTarget=id?books.find(b=>b.id===id):null; $('#bookModalTitle').textContent=editTarget?'Editar libro':'Agregar libro'; $('#bookTitle').value=editTarget?.titulo||''; $('#bookAuthor').value=editTarget?.autor||''; $('#bookShelf').value=editTarget?.tablilla||'Tablilla 1'; $('#bookCategory').value=editTarget?.categoria||''; $('#bookISBN').value=editTarget?.isbn||''; $('#bookCover').value=editTarget?.portada||''; $('#bookNotes').value=editTarget?.notas||''; $('#bookModal').classList.remove('hide'); }
-function closeBook(){ $('#bookModal').classList.add('hide'); editTarget=null; }
+function closeBook(){ if(typeof stopScanner==='function')stopScanner(); $('#scanModal')&&$('#scanModal').classList.add('hide'); $('#bookModal').classList.add('hide'); editTarget=null; }
 function saveBook(){ const title=$('#bookTitle').value.trim(); if(!title){alert('El título no puede estar vacío.');return;} const data={titulo:title,autor:$('#bookAuthor').value.trim(),tablilla:$('#bookShelf').value.trim()||'Sin tablilla',categoria:$('#bookCategory').value.trim(),ubicacion:$('#bookShelf').value.trim(),isbn:$('#bookISBN').value.trim(),portada:$('#bookCover').value.trim(),notas:$('#bookNotes').value.trim()}; if(editTarget)Object.assign(editTarget,data); else books.push(upgradeBook({id:'LIB-'+String(Date.now()).slice(-6),...data,copia:1,estado:'Disponible',prestado_a:'',telefono:'',fecha_prestamo:'',fecha_devolucion:''})); save(); buildShelfTabs(); closeBook(); render(); }
 
 function cleanBookTitle(t){return (t||'').replace(/\([^)]*edition[^)]*\)/ig,'').replace(/\[[^\]]*\]/g,'').replace(/\s+/g,' ').trim();}
@@ -267,6 +282,39 @@ function renderCoverCandidates(){
 }
 function useCover(i){ if(!coverTarget||!coverCandidates[i])return; coverTarget.portada=coverCandidates[i].url; coverTarget.notas=(coverTarget.notas||''); save(); closeCoverModal(); render(); }
 function closeCoverModal(){ $('#coverModal').classList.add('hide'); coverTarget=null; coverCandidates=[]; }
+let html5Scanner=null;
+async function openScanner(){
+  if(typeof Html5Qrcode==='undefined'){ alert('No pude cargar el escáner. Revisa tu conexión a internet e inténtalo otra vez.'); return; }
+  $('#scanModal').classList.remove('hide'); $('#scanStatus').textContent='Iniciando cámara…';
+  try{
+    const fmts=(typeof Html5QrcodeSupportedFormats!=='undefined')?[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8]:null;
+    html5Scanner=new Html5Qrcode('scanView', fmts?{formatsToSupport:fmts}:undefined);
+    await html5Scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:260,height:160}},onScanned,()=>{});
+    $('#scanStatus').textContent='Apunta al código de barras…';
+  }catch(e){ $('#scanStatus').textContent='No pude abrir la cámara. Da permiso de cámara, o escribe el ISBN a mano.'; }
+}
+async function stopScanner(){ if(html5Scanner){ try{await html5Scanner.stop();}catch(e){} try{html5Scanner.clear();}catch(e){} html5Scanner=null; } }
+function closeScanner(){ stopScanner(); $('#scanModal').classList.add('hide'); }
+async function onScanned(text){
+  const isbn=(text||'').replace(/[^0-9Xx]/g,''); if(isbn.length<10) return;
+  await stopScanner(); $('#scanModal').classList.add('hide');
+  $('#bookISBN').value=isbn;
+  await coverFromIsbn(isbn);
+}
+async function coverFromIsbn(isbn){
+  let url='';
+  try{
+    const r=await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:'+encodeURIComponent(isbn));
+    if(r.ok){ const d=await r.json(); const v=(d.items&&d.items[0]&&d.items[0].volumeInfo)||{}; const img=v.imageLinks||{}; const t=img.thumbnail||img.smallThumbnail||''; if(t)url=t.replace(/^http:/,'https:'); }
+  }catch(e){}
+  if(!url){
+    const ol='https://covers.openlibrary.org/b/isbn/'+isbn+'-L.jpg?default=false';
+    const exists=await new Promise(res=>{const im=new Image();im.onload=()=>res(im.naturalWidth>1);im.onerror=()=>res(false);im.src=ol;});
+    if(exists)url='https://covers.openlibrary.org/b/isbn/'+isbn+'-L.jpg';
+  }
+  if(url){ $('#bookCover').value=url; alert('ISBN '+isbn+' escaneado y portada encontrada ✓\nRevisa y toca Guardar.'); }
+  else{ alert('ISBN '+isbn+' escaneado ✓\nNo hallé portada automática; usa el buscador de portadas o pega una URL. Toca Guardar.'); }
+}
 async function findVisibleCovers(){
  const list=filtered().filter(b=>!b.portada).slice(0,10); if(!list.length){$('#coverStatus').textContent='No hay libros visibles sin portada.';return;}
  if(!confirm('Buscaré portadas de hasta 10 libros visibles y solo aplicaré coincidencias de alta confianza. ¿Seguimos?'))return;
