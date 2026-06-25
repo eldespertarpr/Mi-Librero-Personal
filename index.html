@@ -32,6 +32,19 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
 .cover-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px;max-height:60vh;overflow:auto}.cover-choice{background:#0b1220;border:1px solid var(--line);border-radius:14px;padding:10px}.cover-choice img{width:100%;height:180px;object-fit:contain;background:#1e293b;border-radius:10px}.cover-choice b{display:block;margin:6px 0 2px;font-size:.9rem}.cover-choice span{display:block;color:var(--muted);font-size:.78rem}.cover-score{display:inline-flex!important;border-radius:999px;padding:2px 7px;margin:5px 0;background:#1e293b;color:#cbd5e1;font-weight:800}.cover-score.high{background:#052e16;color:#86efac}.cover-score.mid{background:#422006;color:#fde68a}.cover-status{color:var(--muted);font-size:.9rem;margin-top:8px}.cover-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 @media(max-width:720px){.cover-results{grid-template-columns:1fr 1fr}.cover-choice img{height:150px}.cover-tools{grid-template-columns:1fr}}
 @media(max-width:390px){.cover-results{grid-template-columns:1fr}.cover-choice img{height:190px}}
+.viewtoggle{margin-top:10px}
+.grid.shelf{grid-template-columns:repeat(2,1fr);gap:14px}
+.shelf-item{position:relative;aspect-ratio:2/3;border-radius:10px;overflow:hidden;border:1px solid var(--line);padding:0;width:100%;display:block;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.4);background:#0f172a}
+.shelf-cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;display:block}
+.spine{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:16px 12px;text-align:center}
+.spine .orn{font-size:20px;line-height:1}
+.spine .t{font-weight:800;font-size:15px;line-height:1.22;margin:8px 0;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.spine .a{font-size:11px;opacity:.85;line-height:1.2;max-height:2.4em;overflow:hidden}
+.shelf-badge{position:absolute;left:6px;top:6px;z-index:3;background:rgba(245,158,11,.95);color:#1f2937;font-size:.66rem;font-weight:800;padding:2px 7px;border-radius:999px}
+@media(min-width:620px){.grid.shelf{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:900px){.grid.shelf{grid-template-columns:repeat(4,1fr)}}
+.actions-col{display:flex;flex-direction:column;gap:8px}
+.actions-col button{width:100%}
 </style>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
@@ -63,6 +76,7 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
       </select>
     </div>
     <div id="shelfTabs" class="tabs"></div>
+    <div class="viewtoggle"><button id="viewToggle" class="secondary btn-mini">📚 Ver como estante</button></div>
   </section>
   <section class="no-print stats" id="stats"></section>
   <section class="no-print panel">
@@ -105,6 +119,14 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
     <input id="coverPhoto" type="file" accept="image/*" capture="environment" hidden>
     <label>Notas<textarea id="bookNotes" rows="3"></textarea></label>
     <div class="actions"><button id="bookSave" class="good">Guardar</button><button id="bookCancel" class="secondary">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="modal hide" id="actionsModal">
+  <div class="modalbox">
+    <h2 id="actionsTitle"></h2>
+    <div id="actionsButtons" class="actions-col"></div>
+    <div class="cover-tools" style="margin-top:10px"><button id="actionsClose" class="secondary">Cerrar</button></div>
   </div>
 </div>
 
@@ -202,6 +224,8 @@ function bind(){
  $('#scanClose').onclick=closeScanner;
  $('#coverPhotoBtn').onclick=()=>$('#coverPhoto').click();
  $('#coverPhoto').addEventListener('change',onCoverPhoto);
+ if($('#viewToggle')){$('#viewToggle').onclick=toggleView; updateViewToggle();}
+ if($('#actionsClose'))$('#actionsClose').onclick=closeActions;
 }
 function buildShelfTabs(){
  const shelves=['Todas',...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a==='Todas'?-1:b==='Todas'?1:a.localeCompare(b,undefined,{numeric:true}));
@@ -226,13 +250,20 @@ function render(){
  const total=books.length, loan=books.filter(b=>b.estado==='Prestado').length, noCover=books.filter(b=>!b.portada).length, noAuthor=books.filter(b=>!b.autor).length;
  $('#stats').innerHTML=`<div class="stat"><b>${total}</b><span>Libros</span></div><div class="stat"><b>${loan}</b><span>Prestados</span></div><div class="stat"><b>${noCover}</b><span>Sin portada</span></div><div class="stat"><b>${noAuthor}</b><span>Sin autor</span></div>`;
  const list=filtered(); $('#count').textContent=`Mostrando ${list.length} de ${books.length}`;
- $('#grid').innerHTML=list.map(card).join('');
- $$('[data-loan]').forEach(btn=>btn.onclick=()=>openLoan(btn.dataset.loan));
- $$('[data-return]').forEach(btn=>btn.onclick=()=>openReturn(btn.dataset.return));
- $$('[data-edit]').forEach(btn=>btn.onclick=()=>openBook(btn.dataset.edit));
- $$('[data-history]').forEach(btn=>btn.onclick=()=>openHistory(btn.dataset.history));
- $$('[data-cover]').forEach(btn=>btn.onclick=()=>openCoverSearch(btn.dataset.cover));
- $$('[data-delete]').forEach(btn=>btn.onclick=()=>deleteBook(btn.dataset.delete));
+ if(viewMode==='estante'){
+   $('#grid').classList.add('shelf');
+   $('#grid').innerHTML=list.map(shelfCard).join('');
+   $$('[data-open]').forEach(btn=>btn.onclick=()=>openActions(btn.dataset.open));
+ } else {
+   $('#grid').classList.remove('shelf');
+   $('#grid').innerHTML=list.map(card).join('');
+   $$('[data-loan]').forEach(btn=>btn.onclick=()=>openLoan(btn.dataset.loan));
+   $$('[data-return]').forEach(btn=>btn.onclick=()=>openReturn(btn.dataset.return));
+   $$('[data-edit]').forEach(btn=>btn.onclick=()=>openBook(btn.dataset.edit));
+   $$('[data-history]').forEach(btn=>btn.onclick=()=>openHistory(btn.dataset.history));
+   $$('[data-cover]').forEach(btn=>btn.onclick=()=>openCoverSearch(btn.dataset.cover));
+   $$('[data-delete]').forEach(btn=>btn.onclick=()=>deleteBook(btn.dataset.delete));
+ }
 }
 function card(b){
  const cover=b.portada?`<img src="${esc(b.portada)}" onerror="this.remove();this.parentElement.textContent='Sin portada'">`:'Sin portada';
@@ -342,6 +373,29 @@ function onCoverPhoto(e){
   reader.onerror=()=>alert('No pude leer el archivo.');
   reader.readAsDataURL(file); e.target.value='';
 }
+let viewMode=(localStorage.getItem('miLibreroView')==='estante')?'estante':'lista';
+let actionTarget=null;
+const SPINES=[{bg:'#b1492b',fg:'#fbe3b3'},{bg:'#caa01f',fg:'#3a2c05'},{bg:'#6f8b4e',fg:'#f3f7e8'},{bg:'#5b86b0',fg:'#f1f7ff'}];
+function hashId(s){s=String(s||'x');let h=0;for(let i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))>>>0;}return h;}
+function spineFor(b){const h=hashId(b.id||b.titulo);const c=SPINES[h%SPINES.length];const orns=['❦','✦','❧','✤'];return {c,orn:orns[(Math.floor(h/4))%orns.length]};}
+function shelfCard(b){
+  const {c,orn}=spineFor(b);
+  const spine=`<div class="spine" style="background:${c.bg};color:${c.fg}"><div class="orn">${orn}</div><div class="t">${esc(b.titulo||'(sin título)')}</div><div class="a">${esc(b.autor||'')}</div><div class="orn">${orn}</div></div>`;
+  const cover=b.portada?`<img class="shelf-cover" src="${esc(b.portada)}" alt="" onerror="this.remove()">`:'';
+  const badge=b.estado==='Prestado'?`<span class="shelf-badge">Prestado</span>`:'';
+  return `<button class="shelf-item" data-open="${b.id}" title="${esc(b.titulo||'')}">${spine}${cover}${badge}</button>`;
+}
+function updateViewToggle(){ const t=$('#viewToggle'); if(t)t.textContent=viewMode==='estante'?'📋 Ver como lista':'📚 Ver como estante'; }
+function toggleView(){ viewMode=viewMode==='estante'?'lista':'estante'; localStorage.setItem('miLibreroView',viewMode); updateViewToggle(); render(); }
+function openActions(id){
+  const b=books.find(x=>x.id===id); if(!b)return; actionTarget=id;
+  $('#actionsTitle').textContent=b.titulo||'(sin título)';
+  const loanBtn=b.estado==='Prestado'?`<button data-act="return" class="good">Marcar devuelto</button>`:`<button data-act="loan">Prestar</button>`;
+  $('#actionsButtons').innerHTML=`<button data-act="edit" class="secondary">Editar</button>${loanBtn}<button data-act="history" class="secondary">Historial</button><button data-act="cover" class="secondary">${b.portada?'Cambiar portada':'Buscar portada'}</button><button data-act="delete" class="secondary" style="border-color:#7f1d1d;color:#fca5a5">Eliminar</button>`;
+  $$('#actionsButtons [data-act]').forEach(btn=>btn.onclick=()=>{ const a=btn.dataset.act; closeActions(); if(a==='edit')openBook(id); else if(a==='loan')openLoan(id); else if(a==='return')openReturn(id); else if(a==='history')openHistory(id); else if(a==='cover')openCoverSearch(id); else if(a==='delete')deleteBook(id); });
+  $('#actionsModal').classList.remove('hide');
+}
+function closeActions(){ $('#actionsModal').classList.add('hide'); actionTarget=null; }
 async function findVisibleCovers(){
  const list=filtered().filter(b=>!b.portada).slice(0,10); if(!list.length){$('#coverStatus').textContent='No hay libros visibles sin portada.';return;}
  if(!confirm('Buscaré portadas de hasta 10 libros visibles y solo aplicaré coincidencias de alta confianza. ¿Seguimos?'))return;
