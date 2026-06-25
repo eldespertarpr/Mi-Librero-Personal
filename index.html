@@ -45,6 +45,13 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
 @media(min-width:900px){.grid.shelf{grid-template-columns:repeat(4,1fr)}}
 .actions-col{display:flex;flex-direction:column;gap:8px}
 .actions-col button{width:100%}
+.menuwrap{position:relative}
+.iconbtn{width:44px;height:44px;border-radius:11px;border:1px solid var(--line);background:#1f2937;color:#cfe3f7;font-size:24px;font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.toolsmenu{position:absolute;right:0;top:52px;width:264px;background:#111c30;border:1px solid #38506f;border-radius:14px;padding:7px;box-shadow:0 14px 34px rgba(0,0,0,.55);z-index:30}
+.toolsmenu .mi{display:block;width:100%;text-align:left;background:transparent;border:0;color:#dbeafe;font-size:14px;padding:12px;border-radius:9px;cursor:pointer;font-weight:600}
+.toolsmenu .mi:hover{background:#1b2a44}
+.toolsmenu .misep{height:1px;background:#26354f;margin:5px 6px}
+.toolsmenu .mi-danger{color:#fca5a5}
 </style>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
@@ -56,6 +63,22 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
       <div><h1>Mi Librero</h1><p>Buscar, prestar y controlar tus libros por tablilla</p></div>
     </div>
     <div class="right small" id="count"></div>
+    <div class="menuwrap" id="menuwrap">
+      <button id="toolsBtn" class="iconbtn" aria-label="Más opciones" title="Más opciones">⋮</button>
+      <div id="toolsMenu" class="toolsmenu hide">
+        <button id="findVisibleCovers" class="mi">🔍 Buscar portadas visibles</button>
+        <div class="misep"></div>
+        <button id="printCatalog" class="mi">🖨️ Imprimir catálogo</button>
+        <button id="printLoans" class="mi">🖨️ Imprimir prestados</button>
+        <div class="misep"></div>
+        <button id="exportJson" class="mi">💾 Backup JSON</button>
+        <button id="exportCsv" class="mi">⬇️ Exportar CSV</button>
+        <label class="mi" for="importFile">⬆️ Importar (JSON o CSV)</label>
+        <input id="importFile" type="file" accept=".json,.csv,text/csv,application/json" hidden>
+        <div class="misep"></div>
+        <button id="resetData" class="mi mi-danger">⚠️ Restaurar inicial</button>
+      </div>
+    </div>
   </div>
 </header>
 <main class="wrap">
@@ -83,13 +106,6 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
     <div class="actions">
       <button id="addBook">Agregar libro</button>
       <button id="showLoans" class="good">Ver prestados</button>
-      <button id="findVisibleCovers" class="secondary">Buscar portadas visibles</button>
-      <button id="printCatalog" class="secondary">Imprimir catálogo</button>
-      <button id="printLoans" class="secondary">Imprimir prestados</button>
-      <button id="exportJson" class="secondary">Backup JSON</button>
-      <button id="exportCsv" class="secondary">Exportar CSV</button>
-      <label class="small">Importar (JSON o CSV) <input id="importFile" type="file" accept=".json,.csv,text/csv,application/json" hidden></label>
-      <button id="resetData" class="danger">Restaurar inicial</button>
     </div>
     <p class="small">Los cambios se guardan en este navegador. Usa Backup JSON si vas a cambiar de celular o computadora.</p>
     <p class="cover-status" id="coverStatus"></p>
@@ -226,6 +242,9 @@ function bind(){
  $('#coverPhoto').addEventListener('change',onCoverPhoto);
  if($('#viewToggle')){$('#viewToggle').onclick=toggleView; updateViewToggle();}
  if($('#actionsClose'))$('#actionsClose').onclick=closeActions;
+ if($('#toolsBtn'))$('#toolsBtn').onclick=toggleToolsMenu;
+ if($('#toolsMenu'))$('#toolsMenu').addEventListener('click',()=>setTimeout(closeToolsMenu,0));
+ document.addEventListener('click',(e)=>{ const w=$('#menuwrap'); if(w && !w.contains(e.target)) closeToolsMenu(); });
 }
 function buildShelfTabs(){
  const shelves=['Todas',...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a==='Todas'?-1:b==='Todas'?1:a.localeCompare(b,undefined,{numeric:true}));
@@ -396,6 +415,8 @@ function openActions(id){
   $('#actionsModal').classList.remove('hide');
 }
 function closeActions(){ $('#actionsModal').classList.add('hide'); actionTarget=null; }
+function toggleToolsMenu(e){ if(e)e.stopPropagation(); const m=$('#toolsMenu'); if(m)m.classList.toggle('hide'); }
+function closeToolsMenu(){ const m=$('#toolsMenu'); if(m)m.classList.add('hide'); }
 async function findVisibleCovers(){
  const list=filtered().filter(b=>!b.portada).slice(0,10); if(!list.length){$('#coverStatus').textContent='No hay libros visibles sin portada.';return;}
  if(!confirm('Buscaré portadas de hasta 10 libros visibles y solo aplicaré coincidencias de alta confianza. ¿Seguimos?'))return;
