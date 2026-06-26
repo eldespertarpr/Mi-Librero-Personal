@@ -67,6 +67,10 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
 .backbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .backbtn{background:#1f2937;border:1px solid var(--line);color:#cfe3f7;font-weight:700;padding:9px 14px;border-radius:11px;cursor:pointer;font-size:14px}
 #currentShelfName{color:#94a3b8}
+.cardtap{cursor:pointer;transition:border-color .15s,background .15s}
+.cardtap:hover{border-color:#38506f}
+.cardtap:active{background:#0c1626}
+.taphint{color:#7c93b3;font-size:12px;margin-top:8px;font-weight:600}
 </style>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
@@ -299,20 +303,14 @@ function render(){
  } else {
    $('#grid').classList.remove('shelf');
    $('#grid').innerHTML=list.map(card).join('');
-   $$('[data-loan]').forEach(btn=>btn.onclick=()=>openLoan(btn.dataset.loan));
-   $$('[data-return]').forEach(btn=>btn.onclick=()=>openReturn(btn.dataset.return));
-   $$('[data-edit]').forEach(btn=>btn.onclick=()=>openBook(btn.dataset.edit));
-   $$('[data-history]').forEach(btn=>btn.onclick=()=>openHistory(btn.dataset.history));
-   $$('[data-cover]').forEach(btn=>btn.onclick=()=>openCoverSearch(btn.dataset.cover));
-   $$('[data-delete]').forEach(btn=>btn.onclick=()=>deleteBook(btn.dataset.delete));
+   $$('[data-open]').forEach(btn=>btn.onclick=()=>openActions(btn.dataset.open));
  }
 }
 function card(b){
  const cover=b.portada?`<img src="${esc(b.portada)}" onerror="this.remove();this.parentElement.textContent='Sin portada'">`:'Sin portada';
  const status=b.estado==='Prestado'?`<span class="badge loan">Prestado a ${esc(b.prestado_a||'')}</span>`:`<span class="badge ok">Disponible</span>`;
- const hist=(b.historial_prestamos||[]).length;
- const extra=b.estado==='Prestado'?`<div class="statusline">Prestado: ${esc(b.fecha_prestamo||'sin fecha')}${b.telefono?' · Tel: '+esc(b.telefono):''}</div>${dueText(b)}${b.nota_prestamo?`<div class="statusline">Nota: ${esc(b.nota_prestamo)}</div>`:''}`:'';
- return `<article class="card"><div class="cover">${cover}</div><div class="info"><div class="title">${esc(b.titulo)}${b.copia>1?` <span class="small">(copia ${b.copia})</span>`:''}</div><div class="meta">${esc(b.autor||'Autor no registrado')}</div><div class="meta"><b>${esc(b.tablilla)}</b> — ${esc(b.categoria)}</div>${status}${extra}<div class="actions"><button data-edit="${b.id}" class="secondary">Editar</button>${b.estado==='Prestado'?`<button data-return="${b.id}" class="good">Devuelto</button>`:`<button data-loan="${b.id}">Prestar</button>`}<button data-history="${b.id}" class="secondary btn-mini">Historial${hist?` (${hist})`:''}</button><button data-cover="${b.id}" class="secondary btn-mini">${b.portada?'Cambiar portada':'Buscar portada'}</button><button data-delete="${b.id}" class="secondary btn-mini" style="border-color:#7f1d1d;color:#fca5a5">Eliminar</button></div></div></article>`;
+ const extra=b.estado==='Prestado'?`<div class="statusline">Prestado: ${esc(b.fecha_prestamo||'sin fecha')}${b.telefono?' \u00b7 Tel: '+esc(b.telefono):''}</div>${dueText(b)}${b.nota_prestamo?`<div class="statusline">Nota: ${esc(b.nota_prestamo)}</div>`:''}`:'';
+ return `<article class="card cardtap" data-open="${b.id}"><div class="cover">${cover}</div><div class="info"><div class="title">${esc(b.titulo)}${b.copia>1?` <span class="small">(copia ${b.copia})</span>`:''}</div><div class="meta">${esc(b.autor||'Autor no registrado')}</div><div class="meta"><b>${esc(b.tablilla)}</b> \u2014 ${esc(b.categoria)}</div>${status}${extra}<div class="taphint">Toca para ver opciones \u203a</div></div></article>`;
 }
 function openLoan(id){ loanTarget=books.find(b=>b.id===id); $('#loanTitle').textContent=loanTarget.titulo; $('#loanPerson').value=''; $('#loanPhone').value=''; $('#loanDate').value=today(); $('#loanDue').value=''; $('#loanNote').value=''; $('#loanModal').classList.remove('hide'); }
 function closeLoan(){ $('#loanModal').classList.add('hide'); loanTarget=null; }
