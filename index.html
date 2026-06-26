@@ -52,6 +52,21 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
 .toolsmenu .mi:hover{background:#1b2a44}
 .toolsmenu .misep{height:1px;background:#26354f;margin:5px 6px}
 .toolsmenu .mi-danger{color:#fca5a5}
+#shelvesScreen{padding:2px 0}
+.shelves-title{font-size:15px;font-weight:800;color:#cfe3f7;margin:6px 2px 14px}
+.shelves-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(min-width:620px){.shelves-grid{grid-template-columns:repeat(3,1fr)}}
+.shelf-card{display:flex;align-items:stretch;height:118px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#0f172a;padding:0;cursor:pointer;text-align:left;width:100%;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.sc-band{position:relative;width:80px;flex:0 0 80px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.sc-ico{font-size:30px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.sc-cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sc-band-all{background:linear-gradient(135deg,#1e3a5f,#0b2540)}
+.sc-info{flex:1;display:flex;flex-direction:column;justify-content:center;padding:10px 12px;min-width:0}
+.sc-name{font-weight:800;font-size:15px;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.sc-count{color:#9fb6d4;font-size:12px;margin-top:5px}
+.backbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.backbtn{background:#1f2937;border:1px solid var(--line);color:#cfe3f7;font-weight:700;padding:9px 14px;border-radius:11px;cursor:pointer;font-size:14px}
+#currentShelfName{color:#94a3b8}
 </style>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
@@ -82,6 +97,12 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
   </div>
 </header>
 <main class="wrap">
+<section id="shelvesScreen">
+  <h2 class="shelves-title">Tus estantes</h2>
+  <div id="shelvesGrid" class="shelves-grid"></div>
+</section>
+<div id="booksScreen" class="hide">
+  <div class="backbar"><button id="backShelves" class="backbtn">← Estantes</button><span id="currentShelfName" class="small"></span></div>
   <section class="no-print panel">
     <div class="searchbar">
       <input id="q" placeholder="Buscar por título, autor, tablilla, persona…" autocomplete="off">
@@ -112,6 +133,7 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
   </section>
   <section class="no-print grid" id="grid"></section>
   <section class="print-area" id="printArea"></section>
+</div>
 </main>
 <div class="modal hide" id="loanModal">
   <div class="modalbox">
@@ -210,7 +232,7 @@ async function init(){
   const saved=localStorage.getItem(LS_KEY);
   if(saved){ books=JSON.parse(saved).map(upgradeBook); }
   else{ books = Array.isArray(window.SEED_BOOKS) ? window.SEED_BOOKS.map(upgradeBook) : []; save(); }
-  buildShelfTabs(); bind(); render();
+  buildShelfTabs(); bind(); buildShelvesScreen(); showScreen(); render();
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(books));}
@@ -245,6 +267,7 @@ function bind(){
  if($('#toolsBtn'))$('#toolsBtn').onclick=toggleToolsMenu;
  if($('#toolsMenu'))$('#toolsMenu').addEventListener('click',()=>setTimeout(closeToolsMenu,0));
  document.addEventListener('click',(e)=>{ const w=$('#menuwrap'); if(w && !w.contains(e.target)) closeToolsMenu(); });
+ if($('#backShelves'))$('#backShelves').onclick=backToShelves;
 }
 function buildShelfTabs(){
  const shelves=['Todas',...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a==='Todas'?-1:b==='Todas'?1:a.localeCompare(b,undefined,{numeric:true}));
@@ -255,7 +278,7 @@ function filtered(){
  const q=norm($('#q').value);
  let list=books.filter(b=>{
   const hay=norm([b.titulo,b.autor,b.tablilla,b.categoria,b.ubicacion,b.prestado_a,b.notas,b.nota_prestamo,b.isbn].join(' ')).includes(q);
-  const shelf=currentShelf==='Todas'||b.tablilla===currentShelf;
+  const shelf=q?true:(currentShelf==='Todas'||b.tablilla===currentShelf);
   const status=currentFilter==='todos'||(currentFilter==='prestados'?b.estado==='Prestado':currentFilter==='disponibles'?b.estado!=='Prestado':currentFilter==='sin_portada'?!b.portada:currentFilter==='sin_autor'?!b.autor:true);
   return hay&&shelf&&status;
  });
@@ -417,6 +440,27 @@ function openActions(id){
 function closeActions(){ $('#actionsModal').classList.add('hide'); actionTarget=null; }
 function toggleToolsMenu(e){ if(e)e.stopPropagation(); const m=$('#toolsMenu'); if(m)m.classList.toggle('hide'); }
 function closeToolsMenu(){ const m=$('#toolsMenu'); if(m)m.classList.add('hide'); }
+let currentScreen='shelves';
+const SHELF_COLORS=['#b1492b','#caa01f','#6f8b4e','#5b86b0','#8a5a9e','#3f7d8c','#a15c4a','#4f7a5b'];
+function shelfColorFor(name){ return SHELF_COLORS[hashId(name)%SHELF_COLORS.length]; }
+function buildShelvesScreen(){
+  const g=$('#shelvesGrid'); if(!g)return;
+  const names=[...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  let html=`<button class="shelf-card" data-shelf="Todas"><div class="sc-band sc-band-all"><span class="sc-ico">📚</span></div><div class="sc-info"><div class="sc-name">Todos los libros</div><div class="sc-count">${books.length} ${books.length===1?'libro':'libros'}</div></div></button>`;
+  names.forEach(name=>{
+    const inShelf=books.filter(b=>(b.tablilla||'Sin tablilla')===name);
+    const cnt=inShelf.length;
+    const wc=inShelf.find(b=>b.portada);
+    const color=shelfColorFor(name);
+    const cover=wc?`<img class="sc-cover" src="${esc(wc.portada)}" alt="" onerror="this.remove()">`:'';
+    html+=`<button class="shelf-card" data-shelf="${esc(name)}"><div class="sc-band" style="background:${color}"><span class="sc-ico">📖</span>${cover}</div><div class="sc-info"><div class="sc-name">${esc(name)}</div><div class="sc-count">${cnt} ${cnt===1?'libro':'libros'}</div></div></button>`;
+  });
+  g.innerHTML=html;
+  $$('#shelvesGrid [data-shelf]').forEach(btn=>btn.onclick=()=>openShelf(btn.dataset.shelf));
+}
+function showScreen(){ const onS=currentScreen==='shelves'; if($('#shelvesScreen'))$('#shelvesScreen').classList.toggle('hide',!onS); if($('#booksScreen'))$('#booksScreen').classList.toggle('hide',onS); }
+function openShelf(name){ currentShelf=name; if($('#q'))$('#q').value=''; currentScreen='books'; if($('#currentShelfName'))$('#currentShelfName').textContent=(name==='Todas'?'Todos los libros':name); showScreen(); buildShelfTabs(); render(); window.scrollTo(0,0); }
+function backToShelves(){ currentScreen='shelves'; if($('#q'))$('#q').value=''; showScreen(); buildShelvesScreen(); window.scrollTo(0,0); }
 async function findVisibleCovers(){
  const list=filtered().filter(b=>!b.portada).slice(0,10); if(!list.length){$('#coverStatus').textContent='No hay libros visibles sin portada.';return;}
  if(!confirm('Buscaré portadas de hasta 10 libros visibles y solo aplicaré coincidencias de alta confianza. ¿Seguimos?'))return;
