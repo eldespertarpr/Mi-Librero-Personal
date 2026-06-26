@@ -83,6 +83,10 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
 .shelf-opt{text-align:left;background:transparent;border:0;color:#dbeafe;font-size:14px;padding:11px 12px;border-radius:9px;cursor:pointer;font-weight:600}
 .shelf-opt:hover{background:#1b2a44}
 .shelf-opt.on{background:#38bdf8;color:#072a3a;font-weight:800}
+.shelf-card-wrap{position:relative}
+.sc-menu{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.28);background:rgba(15,23,42,.6);color:#fff;font-size:18px;font-weight:800;line-height:1;cursor:pointer;z-index:4;display:flex;align-items:center;justify-content:center}
+.shelf-new{border-style:dashed!important}
+.sc-band-new{background:#16233c}
 </style>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
@@ -178,6 +182,35 @@ html{font-size:16px;-webkit-text-size-adjust:100%} body{overflow-x:hidden} label
   </div>
 </div>
 
+<div class="modal hide" id="shelfActionsModal">
+  <div class="modalbox">
+    <h2 id="shelfActionsTitle"></h2>
+    <div class="actions-col">
+      <button id="shelfRenameBtn" class="secondary">✏️ Renombrar</button>
+      <button id="shelfDeleteBtn" class="secondary" style="border-color:#7f1d1d;color:#fca5a5">🗑 Borrar</button>
+    </div>
+    <div class="cover-tools" style="margin-top:10px"><button id="shelfActionsClose" class="secondary">Cerrar</button></div>
+  </div>
+</div>
+
+<div class="modal hide" id="shelfNameModal">
+  <div class="modalbox">
+    <h2 id="shelfNameTitle">Nuevo estante</h2>
+    <label>Nombre<input id="shelfNameInput" autocomplete="off" placeholder="Ej.: Novela, Cocina, Historia…"></label>
+    <div class="actions" style="margin-top:12px"><button id="shelfNameSave" class="good">Guardar</button><button id="shelfNameCancel" class="secondary">Cancelar</button></div>
+  </div>
+</div>
+
+<div class="modal hide" id="shelfDeleteModal">
+  <div class="modalbox">
+    <h2>Borrar estante</h2>
+    <p class="small" id="shelfDeleteMsg"></p>
+    <p class="small" style="margin-top:8px;color:#94a3b8">Los libros NO se borran — solo cambian de estante. Elige a dónde moverlos:</p>
+    <div id="shelfMoveTargets" class="actions-col"></div>
+    <div class="cover-tools" style="margin-top:10px"><button id="shelfDeleteCancel" class="secondary">Cancelar</button></div>
+  </div>
+</div>
+
 <div class="modal hide" id="actionsModal">
   <div class="modalbox">
     <h2 id="actionsTitle"></h2>
@@ -250,7 +283,7 @@ async function init(){
   const saved=localStorage.getItem(LS_KEY);
   if(saved){ books=JSON.parse(saved).map(upgradeBook); }
   else{ books = Array.isArray(window.SEED_BOOKS) ? window.SEED_BOOKS.map(upgradeBook) : []; save(); }
-  buildShelfTabs(); bind(); buildShelvesScreen(); showScreen(); render();
+  loadShelves(); buildShelfTabs(); bind(); buildShelvesScreen(); showScreen(); render();
   if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(books));}
@@ -289,12 +322,18 @@ function bind(){
  if($('#toggleFilters'))$('#toggleFilters').onclick=toggleFilters;
  if($('#toggleStats'))$('#toggleStats').onclick=toggleStats;
  if($('#tablillaBtn'))$('#tablillaBtn').onclick=toggleTablilla;
+ if($('#shelfActionsClose'))$('#shelfActionsClose').onclick=closeShelfActions;
+ if($('#shelfRenameBtn'))$('#shelfRenameBtn').onclick=()=>{ const t=shelfActionTarget; closeShelfActions(); openRenameShelf(t); };
+ if($('#shelfDeleteBtn'))$('#shelfDeleteBtn').onclick=()=>{ openDeleteShelf(shelfActionTarget); };
+ if($('#shelfNameSave'))$('#shelfNameSave').onclick=saveShelfName;
+ if($('#shelfNameCancel'))$('#shelfNameCancel').onclick=closeShelfName;
+ if($('#shelfDeleteCancel'))$('#shelfDeleteCancel').onclick=()=>$('#shelfDeleteModal').classList.add('hide');
  document.addEventListener('click',(e)=>{ if(!e.target.closest('.menubar')&&!e.target.closest('.dropmenu')&&!e.target.closest('#stats')) closeMenus(); });
 }
 function buildShelfTabs(){
  const menu=$('#tablillaMenu'); if(!menu)return;
- const shelves=['Todas',...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a==='Todas'?-1:b==='Todas'?1:a.localeCompare(b,undefined,{numeric:true}));
- menu.innerHTML=shelves.map(s=>`<button class="shelf-opt${s===currentShelf?' on':''}" data-shelf="${esc(s)}">${esc(s)}${s===currentShelf?' \u2713':''}</button>`).join('');
+ const shelves=['Todas',...shelvesForDisplay()];
+ menu.innerHTML=shelves.map(s=>`<button class="shelf-opt${s===currentShelf?' on':''}" data-shelf="${esc(s)}">${esc(s)}${s===currentShelf?' ✓':''}</button>`).join('');
  $$('#tablillaMenu [data-shelf]').forEach(btn=>btn.onclick=()=>{ currentShelf=btn.dataset.shelf; updateTablillaLabel(); closeMenus(); buildShelfTabs(); render(); });
  updateTablillaLabel();
 }
@@ -303,7 +342,7 @@ function filtered(){
  const q=norm($('#q').value);
  let list=books.filter(b=>{
   const hay=norm([b.titulo,b.autor,b.tablilla,b.categoria,b.ubicacion,b.prestado_a,b.notas,b.nota_prestamo,b.isbn].join(' ')).includes(q);
-  const shelf=q?true:(currentShelf==='Todas'||b.tablilla===currentShelf);
+  const shelf=q?true:(currentShelf==='Todas'||(b.tablilla||'Sin tablilla')===currentShelf);
   const status=currentFilter==='todos'||(currentFilter==='prestados'?b.estado==='Prestado':currentFilter==='disponibles'?b.estado!=='Prestado':currentFilter==='sin_portada'?!b.portada:currentFilter==='sin_autor'?!b.autor:true);
   return hay&&shelf&&status;
  });
@@ -462,22 +501,87 @@ const SHELF_COLORS=['#b1492b','#caa01f','#6f8b4e','#5b86b0','#8a5a9e','#3f7d8c',
 function shelfColorFor(name){ return SHELF_COLORS[hashId(name)%SHELF_COLORS.length]; }
 function buildShelvesScreen(){
   const g=$('#shelvesGrid'); if(!g)return;
-  const names=[...new Set(books.map(b=>b.tablilla||'Sin tablilla'))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const names=shelvesForDisplay();
   let html=`<button class="shelf-card" data-shelf="Todas"><div class="sc-band sc-band-all"><span class="sc-ico">📚</span></div><div class="sc-info"><div class="sc-name">Todos los libros</div><div class="sc-count">${books.length} ${books.length===1?'libro':'libros'}</div></div></button>`;
   names.forEach(name=>{
+    const isUnfiled=name==='Sin tablilla';
     const inShelf=books.filter(b=>(b.tablilla||'Sin tablilla')===name);
     const cnt=inShelf.length;
     const wc=inShelf.find(b=>b.portada);
     const color=shelfColorFor(name);
     const cover=wc?`<img class="sc-cover" src="${esc(wc.portada)}" alt="" onerror="this.remove()">`:'';
-    html+=`<button class="shelf-card" data-shelf="${esc(name)}"><div class="sc-band" style="background:${color}"><span class="sc-ico">📖</span>${cover}</div><div class="sc-info"><div class="sc-name">${esc(name)}</div><div class="sc-count">${cnt} ${cnt===1?'libro':'libros'}</div></div></button>`;
+    const menuBtn=isUnfiled?'':`<button class="sc-menu" data-shelfmenu="${esc(name)}" aria-label="Opciones del estante">⋮</button>`;
+    html+=`<div class="shelf-card-wrap"><button class="shelf-card" data-shelf="${esc(name)}"><div class="sc-band" style="background:${color}"><span class="sc-ico">📖</span>${cover}</div><div class="sc-info"><div class="sc-name">${esc(name)}</div><div class="sc-count">${cnt} ${cnt===1?'libro':'libros'}</div></div></button>${menuBtn}</div>`;
   });
+  html+=`<button class="shelf-card shelf-new" id="newShelfCard"><div class="sc-band sc-band-new"><span class="sc-ico">➕</span></div><div class="sc-info"><div class="sc-name">Nuevo estante</div><div class="sc-count">Crear</div></div></button>`;
   g.innerHTML=html;
   $$('#shelvesGrid [data-shelf]').forEach(btn=>btn.onclick=()=>openShelf(btn.dataset.shelf));
+  $$('#shelvesGrid [data-shelfmenu]').forEach(btn=>btn.onclick=(e)=>{ e.stopPropagation(); openShelfActions(btn.dataset.shelfmenu); });
+  const nb=$('#newShelfCard'); if(nb)nb.onclick=openNewShelf;
 }
 function showScreen(){ const onS=currentScreen==='shelves'; if($('#shelvesScreen'))$('#shelvesScreen').classList.toggle('hide',!onS); if($('#booksScreen'))$('#booksScreen').classList.toggle('hide',onS); }
 function openShelf(name){ currentShelf=name; if($('#q'))$('#q').value=''; currentScreen='books'; if($('#currentShelfName'))$('#currentShelfName').textContent=(name==='Todas'?'Todos los libros':name); showScreen(); buildShelfTabs(); render(); window.scrollTo(0,0); }
 function backToShelves(){ currentScreen='shelves'; if($('#q'))$('#q').value=''; showScreen(); buildShelvesScreen(); window.scrollTo(0,0); }
+const SHELVES_KEY='miLibreroShelvesV1';
+let shelfList=[];
+let shelfActionTarget=null, shelfNameMode='create';
+function saveShelves(){ try{ localStorage.setItem(SHELVES_KEY, JSON.stringify(shelfList)); }catch(e){} }
+function loadShelves(){
+  try{ const raw=localStorage.getItem(SHELVES_KEY); shelfList=raw?(JSON.parse(raw)||[]):[]; }catch(e){ shelfList=[]; }
+  books.forEach(b=>{ const n=b.tablilla; if(n && !shelfList.includes(n)) shelfList.push(n); });
+  saveShelves();
+}
+function shelvesForDisplay(){
+  const set=new Set(shelfList); let unfiled=false;
+  books.forEach(b=>{ if(b.tablilla) set.add(b.tablilla); else unfiled=true; });
+  const arr=[...set].filter(Boolean).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  if(unfiled) arr.push('Sin tablilla');
+  return arr;
+}
+function openShelfActions(name){ shelfActionTarget=name; if($('#shelfActionsTitle'))$('#shelfActionsTitle').textContent=name; $('#shelfActionsModal').classList.remove('hide'); }
+function closeShelfActions(){ $('#shelfActionsModal').classList.add('hide'); }
+function openNewShelf(){ shelfNameMode='create'; shelfActionTarget=null; $('#shelfNameTitle').textContent='Nuevo estante'; $('#shelfNameInput').value=''; $('#shelfNameModal').classList.remove('hide'); setTimeout(()=>{try{$('#shelfNameInput').focus();}catch(e){}},60); }
+function openRenameShelf(name){ shelfNameMode='rename'; shelfActionTarget=name; $('#shelfNameTitle').textContent='Renombrar estante'; $('#shelfNameInput').value=name; $('#shelfNameModal').classList.remove('hide'); setTimeout(()=>{try{$('#shelfNameInput').focus();}catch(e){}},60); }
+function closeShelfName(){ $('#shelfNameModal').classList.add('hide'); }
+function saveShelfName(){
+  const v=($('#shelfNameInput').value||'').trim();
+  if(!v){ alert('Escribe un nombre para el estante.'); return; }
+  const names=shelvesForDisplay();
+  if(shelfNameMode==='create'){
+    if(names.some(n=>n.toLowerCase()===v.toLowerCase())){ alert('Ya existe un estante con ese nombre.'); return; }
+    shelfList.push(v); saveShelves();
+  } else {
+    const old=shelfActionTarget;
+    if(v!==old && names.some(n=>n.toLowerCase()===v.toLowerCase())){ alert('Ya existe un estante con ese nombre.'); return; }
+    const idx=shelfList.indexOf(old); if(idx>=0) shelfList[idx]=v; else shelfList.push(v);
+    books.forEach(b=>{ if(b.tablilla===old) b.tablilla=v; });
+    saveShelves(); save();
+    if(currentShelf===old){ currentShelf=v; if($('#currentShelfName'))$('#currentShelfName').textContent=v; }
+  }
+  closeShelfName(); buildShelvesScreen(); buildShelfTabs(); render();
+}
+function openDeleteShelf(name){
+  closeShelfActions();
+  const inShelf=books.filter(b=>b.tablilla===name);
+  if(inShelf.length===0){ if(confirm('¿Borrar el estante "'+name+'"? Está vacío.')) doDeleteShelf(name); return; }
+  shelfActionTarget=name;
+  const targets=shelvesForDisplay().filter(n=>n!==name && n!=='Sin tablilla');
+  let html='<button class="shelf-opt" data-target="__none__">Sin estante (Sin tablilla)</button>';
+  targets.forEach(t=>{ html+=`<button class="shelf-opt" data-target="${esc(t)}">${esc(t)}</button>`; });
+  $('#shelfMoveTargets').innerHTML=html;
+  $('#shelfDeleteMsg').textContent='El estante "'+name+'" tiene '+inShelf.length+' libro(s).';
+  $$('#shelfMoveTargets [data-target]').forEach(btn=>btn.onclick=()=>{ const t=btn.dataset.target; moveAndDeleteShelf(name, t==='__none__'?'':t); });
+  $('#shelfDeleteModal').classList.remove('hide');
+}
+function moveAndDeleteShelf(name,target){
+  books.forEach(b=>{ if(b.tablilla===name) b.tablilla=target; });
+  save(); $('#shelfDeleteModal').classList.add('hide'); doDeleteShelf(name);
+}
+function doDeleteShelf(name){
+  const idx=shelfList.indexOf(name); if(idx>=0){ shelfList.splice(idx,1); saveShelves(); }
+  if(currentShelf===name){ currentShelf='Todas'; }
+  buildShelvesScreen(); buildShelfTabs(); render();
+}
 function closeMenus(){ [['#tablillaMenu','#tablillaBtn'],['#filtersPanel','#toggleFilters'],['#stats','#toggleStats']].forEach(([p,b])=>{ const e=$(p); if(e)e.classList.add('hide'); const bb=$(b); if(bb)bb.classList.remove('active'); }); }
 function toggleMenu(panelSel,btnSel){ const e=$(panelSel); if(!e)return; const willOpen=e.classList.contains('hide'); closeMenus(); if(willOpen){ e.classList.remove('hide'); const b=$(btnSel); if(b)b.classList.add('active'); } }
 function toggleFilters(){ toggleMenu('#filtersPanel','#toggleFilters'); }
