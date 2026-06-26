@@ -398,19 +398,17 @@ async function onScanned(text){
   $('#bookISBN').value=isbn;
   await coverFromIsbn(isbn);
 }
-async function coverFromIsbn(isbn){
+async function coverUrlFromIsbn(isbn){
+  isbn=String(isbn||'').replace(/[^0-9Xx]/g,''); if(isbn.length<10) return '';
   let url='';
-  try{
-    const r=await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:'+encodeURIComponent(isbn));
-    if(r.ok){ const d=await r.json(); const v=(d.items&&d.items[0]&&d.items[0].volumeInfo)||{}; const img=v.imageLinks||{}; const t=img.thumbnail||img.smallThumbnail||''; if(t)url=t.replace(/^http:/,'https:'); }
-  }catch(e){}
-  if(!url){
-    const ol='https://covers.openlibrary.org/b/isbn/'+isbn+'-L.jpg?default=false';
-    const exists=await new Promise(res=>{const im=new Image();im.onload=()=>res(im.naturalWidth>1);im.onerror=()=>res(false);im.src=ol;});
-    if(exists)url='https://covers.openlibrary.org/b/isbn/'+isbn+'-L.jpg';
-  }
-  if(url){ $('#bookCover').value=url; alert('ISBN '+isbn+' escaneado y portada encontrada ✓\nRevisa y toca Guardar.'); }
-  else{ alert('ISBN '+isbn+' escaneado ✓\nNo hallé portada automática; usa el buscador de portadas o pega una URL. Toca Guardar.'); }
+  try{ const r=await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:'+encodeURIComponent(isbn)); if(r.ok){ const d=await r.json(); const v=(d.items&&d.items[0]&&d.items[0].volumeInfo)||{}; const img=v.imageLinks||{}; const t=img.thumbnail||img.smallThumbnail||''; if(t)url=t.replace(/^http:/,'https:'); } }catch(e){}
+  if(!url){ const ol='https://covers.openlibrary.org/b/isbn/'+isbn+'-L.jpg?default=false'; const exists=await new Promise(res=>{const im=new Image();im.onload=()=>res(im.naturalWidth>1);im.onerror=()=>res(false);im.src=ol;}); if(exists)url='https://covers.openlibrary.org/b/isbn/'+isbn+'-L.jpg'; }
+  return url;
+}
+async function coverFromIsbn(isbn){
+  const url=await coverUrlFromIsbn(isbn);
+  if(url){ $('#bookCover').value=url; alert('ISBN '+isbn+' escaneado y portada encontrada \u2713\nRevisa y toca Guardar.'); }
+  else{ alert('ISBN '+isbn+' escaneado \u2713\nNo hall\u00e9 portada autom\u00e1tica; usa el buscador de portadas o pega una URL. Toca Guardar.'); }
 }
 function deleteBook(id){
   const b=books.find(x=>x.id===id); if(!b)return;
@@ -486,11 +484,23 @@ function toggleFilters(){ toggleMenu('#filtersPanel','#toggleFilters'); }
 function toggleStats(){ toggleMenu('#stats','#toggleStats'); }
 function toggleTablilla(){ toggleMenu('#tablillaMenu','#tablillaBtn'); }
 async function findVisibleCovers(){
- const list=filtered().filter(b=>!b.portada).slice(0,10); if(!list.length){$('#coverStatus').textContent='No hay libros visibles sin portada.';return;}
- if(!confirm('Buscaré portadas de hasta 10 libros visibles y solo aplicaré coincidencias de alta confianza. ¿Seguimos?'))return;
- let ok=0, reviewed=0; $('#coverStatus').textContent='Buscando portadas… 0/'+list.length;
- for(const b of list){ reviewed++; try{ const cand=await findCoverCandidates(b); const best=cand[0]; if(best&&best.score>=75){b.portada=best.url; ok++; save();} }catch(e){} $('#coverStatus').textContent=`Buscando portadas… ${reviewed}/${list.length} · aplicadas: ${ok}`; render(); await new Promise(r=>setTimeout(r,250)); }
- $('#coverStatus').textContent=`Listo: revisé ${reviewed} libros visibles y apliqué ${ok} portadas de alta confianza. Las dudosas se quedan sin tocar.`; render();
+  let list=filtered().filter(b=>!b.portada);
+  list.sort((a,b)=>(b.isbn?1:0)-(a.isbn?1:0));
+  list=list.slice(0,12);
+  if(!list.length){$('#coverStatus').textContent='No hay libros visibles sin portada.';return;}
+  if(!confirm('Buscar\u00e9 portadas de hasta 12 libros visibles (primero los que tienen ISBN). Solo aplicar\u00e9 coincidencias seguras. \u00bfSeguimos?'))return;
+  let ok=0,reviewed=0,byIsbn=0; $('#coverStatus').textContent='Buscando portadas\u2026 0/'+list.length;
+  for(const b of list){ reviewed++;
+    try{
+      let url='';
+      if(b.isbn){ url=await coverUrlFromIsbn(b.isbn); if(url)byIsbn++; }
+      if(!url){ const cand=await findCoverCandidates(b); const best=cand[0]; if(best&&best.score>=75) url=best.url; }
+      if(url){ b.portada=url; ok++; save(); }
+    }catch(e){}
+    $('#coverStatus').textContent=`Buscando portadas\u2026 ${reviewed}/${list.length} \u00b7 aplicadas: ${ok}`; render();
+    await new Promise(r=>setTimeout(r,250));
+  }
+  $('#coverStatus').textContent=`Listo: revis\u00e9 ${reviewed} libros y apliqu\u00e9 ${ok} portadas (${byIsbn} por ISBN). Las que no aparecen no est\u00e1n en las bases de datos \u2014 usa la foto.`; render();
 }
 
 function exportJson(){download('mi_librero_backup.json',JSON.stringify(books,null,2),'application/json');}
